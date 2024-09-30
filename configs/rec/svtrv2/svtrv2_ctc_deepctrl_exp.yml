@@ -3,13 +3,13 @@ Global:
   epoch_num: 20
   log_smooth_window: 20
   print_batch_step: 10
-  output_dir: ./output/svtrv2_ctc_deepctrl/
+  output_dir: ./output/svtrv2_ctc_deepctrl_exp/
   save_epoch_step: 1
   # evaluation is run every 2000 iterations
   eval_epoch_step: [0, 1]
   eval_batch_step: [0, 5000]
   cal_metric_during_train: True
-  pretrained_model: /home/deepctrl/liwenju/ocr-train/OpenOCR/output/svtrv2_ctc_deepctrl/best.pth
+  pretrained_model: /home/deepctrl/liwenju/ocr-train/OpenOCR/output/svtrv2_ctc_deepctrl_exp/best.pth
   checkpoints:
   use_tensorboard: True
   infer_img:
@@ -17,7 +17,7 @@ Global:
   character_dict_path: &character_dict_path /home/deepctrl/liwenju/ocr-train/all_vocab.txt
   max_text_length: &max_text_length 64
   use_space_char: &use_space_char True
-  save_res_path: ./output/svtrv2_ctc_deepctrl/predicts_svtrv2_ctc.txt
+  save_res_path: ./output/svtrv2_ctc_deepctrl_exp/predicts_svtrv2_ctc.txt
   use_amp: True
   distributed: False
 
