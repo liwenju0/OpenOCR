@@ -44,7 +44,10 @@ class Trainer(object):
             'eval',
             'test',
         ], 'mode should be train, eval and test'
-        if torch.cuda.device_count() > 1 and 'train' in mode:
+        if not self.cfg['Global']['distributed']:
+            self.cfg['Global']['distributed'] = False
+            self.local_rank = 0
+        elif torch.cuda.device_count() > 1 and 'train' in mode:
             torch.distributed.init_process_group(backend='nccl')
             torch.cuda.set_device(self.device)
             self.cfg['Global']['distributed'] = True
