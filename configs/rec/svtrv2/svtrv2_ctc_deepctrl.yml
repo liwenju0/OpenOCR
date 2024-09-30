@@ -7,9 +7,9 @@ Global:
   save_epoch_step: 1
   # evaluation is run every 2000 iterations
   eval_epoch_step: [0, 1]
-  eval_batch_step: [0, 500]
+  eval_batch_step: [0, 5000]
   cal_metric_during_train: True
-  pretrained_model:
+  pretrained_model: /home/deepctrl/liwenju/ocr-train/OpenOCR/output/svtrv2_ctc_deepctrl/best.pth
   checkpoints:
   use_tensorboard: True
   infer_img:
@@ -29,7 +29,7 @@ Optimizer:
 
 LRScheduler:
   name: OneCycleLR
-  warmup_epoch: 1.5 # pct_start 0.075*20 = 1.5ep
+  warmup_epoch: 0.01 # pct_start 0.075*20 = 1.5ep
   cycle_momentum: False
 
 Architecture:
@@ -84,7 +84,7 @@ Train:
           keep_keys: ['image', 'label', 'length'] # dataloader will return list in this order
   loader:
     shuffle: True
-    batch_size_per_card: 128
+    batch_size_per_card: 200
     drop_last: True
     num_workers: 4
 
@@ -109,5 +109,5 @@ Eval:
   loader:
     shuffle: False
     drop_last: False
-    batch_size_per_card: 128
+    batch_size_per_card: 200
     num_workers: 4
