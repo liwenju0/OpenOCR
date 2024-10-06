@@ -265,9 +265,9 @@ class Trainer(object):
                 if self.scaler:
                     with torch.cuda.amp.autocast():
                         preds = self.model(batch[0], data=batch[1:])
-                        loss = self.loss_class(preds, batch)
                         embedding_loss = self.compute_embedding_loss()
-                        back_loss = loss['loss'] + embedding_loss['EMB/loss']
+                        loss = self.loss_class(preds, batch)
+                        back_loss = loss['loss'] + 0.001 * embedding_loss['EMB/loss']
 
                     self.scaler.scale(back_loss).backward()
                     if self.grad_clip_val > 0:

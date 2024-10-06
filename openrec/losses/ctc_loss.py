@@ -39,20 +39,16 @@ class EmbeddingLoss(nn.Module):
         # 对每个特征,找到最近的距离
         min_distances, min_indices = torch.min(distances, dim=1)
         
-        # 检查 min_distances 是否包含 nan 或 inf
-        if torch.isnan(min_distances).any() or torch.isinf(min_distances).any():
-            print("警告：最小距离中包含 nan 或 inf 值")
-            return {'EMB/loss': torch.tensor(0.0), 'EMB/mean_distance': torch.tensor(0.0)}
 
-        # 在GPU上创建张量
-        similar_char = torch.zeros((self.char_num, 2), dtype=torch.long, device=min_distances.device)
-        similar_char[:, 0] = torch.arange(self.char_num, device=min_distances.device)
-        similar_char[:, 1] = min_indices
-        # 在GPU上进行排序
-        _, sorted_indices = torch.sort(min_distances)
-        similar_char = similar_char[sorted_indices[:100]]
-        similar_char = {f"EMB/[{self.dict[i.item()]} <-> {self.dict[j.item()]}]": round(min_distances[i].item(), 3)
-                         for i, j in similar_char.cpu().numpy()}
+        # # 在GPU上创建张量
+        # similar_char = torch.zeros((self.char_num, 2), dtype=torch.long, device=min_distances.device)
+        # similar_char[:, 0] = torch.arange(self.char_num, device=min_distances.device)
+        # similar_char[:, 1] = min_indices
+        # # 在GPU上进行排序
+        # _, sorted_indices = torch.sort(min_distances)
+        # similar_char = similar_char[sorted_indices[:50]]
+        # similar_char = {f"EMB/[{self.dict[i.item()]} <-> {self.dict[j.item()]}]": round(min_distances[i].item(), 3)
+        #                  for i, j in similar_char.cpu().numpy()}
         # 计算min_distances的平均值
         mean_distance = min_distances.mean()
         
@@ -63,16 +59,8 @@ class EmbeddingLoss(nn.Module):
         loss = -min_distances.mean()
         
         # 在返回之前检查 loss 和 mean_distance
-        if torch.isnan(loss) or torch.isinf(loss):
-            print("警告：损失值为 nan 或 inf")
-            loss = torch.tensor(0.0)
-        
-        if torch.isnan(mean_distance) or torch.isinf(mean_distance):
-            print("警告：平均距离为 nan 或 inf")
-            mean_distance = torch.tensor(0.0)
-
         ret = {'EMB/loss': loss, 'EMB/mean_distance': mean_distance}
-        ret.update(similar_char)
+        # ret.update(similar_char)
         return ret
 
 class CTCLoss(nn.Module):

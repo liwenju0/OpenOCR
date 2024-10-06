@@ -9,7 +9,7 @@ Global:
   eval_epoch_step: [0, 1]
   eval_batch_step: [0, 5000]
   cal_metric_during_train: True
-  pretrained_model: /home/deepctrl/liwenju/ocr-train/OpenOCR/output/svtrv2_ctc_deepctrl_exp/best.pth
+  pretrained_model: /home/deepctrl/liwenju/ocr-train/OpenOCR/output/svtrv2_ctc_deepctrl/best.pth
   checkpoints:
   use_tensorboard: True
   infer_img:
