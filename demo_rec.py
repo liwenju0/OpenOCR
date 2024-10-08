@@ -9,6 +9,7 @@ from openrec.postprocess import build_post_process
 from openrec.preprocess import create_operators, transform
 from tools.engine import Config
 from tools.utils.ckpt import load_ckpt
+import io
 
 
 def build_rec_process(cfg):
@@ -60,18 +61,23 @@ yml_Config = get_all_file_names_including_subdirs(root_directory)
 
 
 def find_file_in_current_dir_and_subdirs(file_name):
+    # print(file_name)
     for root, dirs, files in os.walk('.'):
         if file_name in files:
             relative_path = os.path.join(root, file_name)
             return relative_path
 
 
-def predict(input_image, Model_type, OCR_type):
+def predict(input_image, Model_type):
+    Model_type = "svtrv2_ctc_deepctrl.yml"
+    if os.path.isfile(input_image) and os.path.exists(input_image):
+        with open(input_image, 'rb') as f:
+            input_image = f.read()
 
     path = find_file_in_current_dir_and_subdirs(Model_type)
 
     cfg = Config(path).cfg
-    post_process_class = build_post_process(cfg['PostProcess'])
+    post_process_class = build_post_process(cfg['PostProcess'], cfg['Global'])
     global_config = cfg['Global']
     char_num = len(getattr(post_process_class, 'character'))
     cfg['Architecture']['Decoder']['out_channels'] = char_num
@@ -98,10 +104,10 @@ if __name__ == '__main__':
     with gr.Blocks() as demo:
         with gr.Row():
             with gr.Column(scale=1):
-                input_image = gr.Image(label='Input Image')
+                input_image = gr.Image(label='Input Image', type='filepath')
 
                 # TODO
-                OCR_type = gr.Radio(['STR', 'STD', 'E2E'], label='模型类别')
+                # OCR_type = gr.Radio(['STR', 'STD', 'E2E'], label='模型类别')
 
                 Model_type = gr.Dropdown(choices=yml_Config, label='现有模型配置文件')
 
@@ -110,7 +116,7 @@ if __name__ == '__main__':
             with gr.Column(scale=1):
 
                 # TODO
-                img_output = gr.Image(label='图片识别结果')
+                # img_output = gr.Image(label='图片识别结果')
 
                 output = gr.Textbox(label='文字识别结果')
                 confidence = gr.Textbox(label='置信度')
@@ -120,7 +126,7 @@ if __name__ == '__main__':
                 inputs=[
                     input_image,
                     Model_type,
-                    OCR_type,
+                    # OCR_type,
                 ],
                 outputs=[
                     output,
@@ -128,4 +134,4 @@ if __name__ == '__main__':
                     # TODO img_output,
                 ])
 
-    demo.launch(debug=True)
+    demo.launch(debug=True, share=True, server_name='0.0.0.0', server_port=8080)
