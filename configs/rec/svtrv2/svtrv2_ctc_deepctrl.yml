@@ -3,7 +3,7 @@ Global:
   epoch_num: 20
   log_smooth_window: 20
   print_batch_step: 10
-  output_dir: ./output/svtrv2_ctc_deepctrl/
+  output_dir: ./output/svtrv2_ctc_deepctrl_real/
   save_epoch_step: 1
   # evaluation is run every 2000 iterations
   eval_epoch_step: [0, 1]
@@ -19,7 +19,7 @@ Global:
   use_space_char: &use_space_char True
   save_res_path: ./output/svtrv2_ctc_deepctrl/predicts_svtrv2_ctc.txt
   use_amp: True
-  distributed: False
+  distributed: True
 
 Optimizer:
   name: AdamW
@@ -54,6 +54,7 @@ Architecture:
 Loss:
   name: CTCLoss
   zero_infinity: True
+  use_focal_loss: True
 
 PostProcess:
   name: CTCLabelDecode
@@ -66,9 +67,9 @@ Metric:
 Train:
   dataset:
     name: LMDBDataSet
-    ds_width: True
+    ds_width: False
     padding: False
-    data_dir: "/data2/dataset/crnn/crnn_train_20240927/train"
+    data_dir: "/home/deepctrl/liwenju/ocr-train/OpenOCR/data/train/"
     transforms:
       - DecodeImagePIL: # load image
           img_mode: RGB
@@ -84,16 +85,16 @@ Train:
           keep_keys: ['image', 'label', 'length'] # dataloader will return list in this order
   loader:
     shuffle: True
-    batch_size_per_card: 200
+    batch_size_per_card: 400
     drop_last: True
     num_workers: 4
 
 Eval:
   dataset:
     name: LMDBDataSet
-    ds_width: True
+    ds_width: False
     padding: False
-    data_dir: "/data2/dataset/crnn/crnn_train_20240927/val"
+    data_dir: "/home/deepctrl/liwenju/ocr-train/OpenOCR/data/test/"
     transforms:
       - DecodeImagePIL: # load image
           img_mode: RGB
@@ -109,5 +110,5 @@ Eval:
   loader:
     shuffle: False
     drop_last: False
-    batch_size_per_card: 200
+    batch_size_per_card: 400
     num_workers: 4

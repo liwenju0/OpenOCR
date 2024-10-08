@@ -265,9 +265,8 @@ class Trainer(object):
                 if self.scaler:
                     with torch.cuda.amp.autocast():
                         preds = self.model(batch[0], data=batch[1:])
-                        embedding_loss = self.compute_embedding_loss()
                         loss = self.loss_class(preds, batch)
-                        back_loss = loss['loss'] + 0.001 * embedding_loss['EMB/loss']
+                        back_loss = loss['loss']
 
                     self.scaler.scale(back_loss).backward()
                     if self.grad_clip_val > 0:
@@ -370,13 +369,7 @@ class Trainer(object):
                     for k, v in loss.items()
                 }
                 stats['lr'] = self.lr_scheduler.get_last_lr()[0]
-                emb_stats = {
-                    k: float(v)
-                    if isinstance(v, float) or v.shape == [] else v.detach().cpu().numpy().mean()
-                    for k, v in embedding_loss.items()
-                }
                 train_stats.update(stats)
-                train_stats.update(emb_stats)
 
                 if self.writer is not None:
                     for k, v in train_stats.get().items():
@@ -386,7 +379,6 @@ class Trainer(object):
                     (global_step > 0 and global_step % print_batch_step == 0)
                         or (idx >= len(self.train_dataloader) - 1)):
                     logs = train_stats.log()
-                    logs = logs.replace("EMB/[", "\nEMB/[")
 
                     eta_sec = (
                         (epoch_num + 1 - epoch) * len(self.train_dataloader) -

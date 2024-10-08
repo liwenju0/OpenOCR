@@ -55,6 +55,27 @@ class LMDBDataSet(Dataset):
                     'num_samples': num_samples,
                 }
                 dataset_idx += 1
+            else:
+                for dirname in dirnames:
+                    dirpath_sub = os.path.join(dirpath, dirname)
+                    env = lmdb.open(
+                        dirpath_sub,
+                        max_readers=32,
+                        readonly=True,
+                        lock=False,
+                        readahead=False,
+                        meminit=False,
+                    )  
+                    txn = env.begin(write=False)
+                    num_samples = int(txn.get('num-samples'.encode()))
+                    lmdb_sets[dataset_idx] = {
+                        'dirpath': dirpath_sub,
+                        'env': env,
+                        'txn': txn,
+                        'num_samples': num_samples,
+                    }
+                    dataset_idx += 1 
+
         return lmdb_sets
 
     def dataset_traversal(self):
