@@ -8,6 +8,9 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
+from openrec.losses.ctc_loss import EmbeddingLoss
+embedding_loss = EmbeddingLoss()
+
 from openrec.losses import build_loss
 from openrec.metrics import build_metric
 from openrec.modeling import build_model
@@ -20,6 +23,7 @@ from tools.utils.stats import TrainingStats
 from tools.utils.utility import AverageMeter
 
 __all__ = ['Trainer']
+
 
 
 def get_parameter_number(model):
@@ -172,6 +176,17 @@ class Trainer(object):
             device = torch.device('cpu')
         self.device = device
 
+    def compute_embedding_loss(self):
+        assert hasattr(self.model, 'decoder'), 'model must have decoder'
+        ctc_decoder = self.model.decoder
+        if hasattr(ctc_decoder, 'fc2'):
+            loss = embedding_loss(ctc_decoder.fc2)
+        else:
+            loss = embedding_loss(ctc_decoder.fc)
+
+        return loss
+
+
     def train(self):
         cal_metric_during_train = self.cfg['Global'].get(
             'cal_metric_during_train', False)
@@ -250,8 +265,11 @@ class Trainer(object):
                 if self.scaler:
                     with torch.cuda.amp.autocast():
                         preds = self.model(batch[0], data=batch[1:])
+                        embedding_loss = self.compute_embedding_loss()
                         loss = self.loss_class(preds, batch)
-                    self.scaler.scale(loss['loss']).backward()
+                        back_loss = loss['loss'] + 0.001 * embedding_loss['EMB/loss']
+
+                    self.scaler.scale(back_loss).backward()
                     if self.grad_clip_val > 0:
                         torch.nn.utils.clip_grad_norm_(
                             self.model.parameters(),
@@ -352,7 +370,13 @@ class Trainer(object):
                     for k, v in loss.items()
                 }
                 stats['lr'] = self.lr_scheduler.get_last_lr()[0]
+                emb_stats = {
+                    k: float(v)
+                    if isinstance(v, float) or v.shape == [] else v.detach().cpu().numpy().mean()
+                    for k, v in embedding_loss.items()
+                }
                 train_stats.update(stats)
+                train_stats.update(emb_stats)
 
                 if self.writer is not None:
                     for k, v in train_stats.get().items():
@@ -362,6 +386,7 @@ class Trainer(object):
                     (global_step > 0 and global_step % print_batch_step == 0)
                         or (idx >= len(self.train_dataloader) - 1)):
                     logs = train_stats.log()
+                    logs = logs.replace("EMB/[", "\nEMB/[")
 
                     eta_sec = (
                         (epoch_num + 1 - epoch) * len(self.train_dataloader) -
