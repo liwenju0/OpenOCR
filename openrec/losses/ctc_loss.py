@@ -84,9 +84,11 @@ class CTCLoss(nn.Module):
         loss = self.loss_func(predicts, label, preds_lengths, label_length)
 
         if self.use_focal_loss:
-            weight = torch.exp(-loss)
-            weight = 1 - weight
+            # 使用 torch.clamp 限制 loss 的范围，避免指数计算时溢出
+            clamped_loss = torch.clamp(loss, min=-20, max=20)
+            weight = 1 - torch.exp(-clamped_loss)
             weight = torch.square(weight)
-            loss = loss * weight
+            # 使用 torch.where 避免乘以零权重
+            loss = torch.where(weight > 0, loss * weight, loss)
         loss = loss.mean()
         return {'loss': loss}

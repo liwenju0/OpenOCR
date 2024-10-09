@@ -9,7 +9,7 @@ Global:
   eval_epoch_step: [0, 1]
   eval_batch_step: [0, 5000]
   cal_metric_during_train: True
-  pretrained_model: /home/deepctrl/liwenju/ocr-train/OpenOCR/output/svtrv2_ctc_deepctrl/best.pth
+  pretrained_model: /home/deepctrl/liwenju/ocr-train/OpenOCR/output/svtrv2_ctc_deepctrl_real/best.pth
   checkpoints:
   use_tensorboard: True
   infer_img:
@@ -23,7 +23,7 @@ Global:
 
 Optimizer:
   name: AdamW
-  lr: 0.0001 # for 4gpus bs256/gpu
+  lr: 0.00005 # for 4gpus bs256/gpu
   weight_decay: 0.05
   filter_bias_and_bn: True
 

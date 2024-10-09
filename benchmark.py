@@ -119,6 +119,8 @@ if __name__ == '__main__':
         result, confidence = predict(os.path.join(base_file_path, file), model)
         print(result, label, confidence)
         total_count += 1
+        result = result.replace(" ", "")
+        label = label.replace(" ", "")
         if result == label:
             total_right += 1
     print(f"Total count: {total_count}, Total right: {total_right}")
