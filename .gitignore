@@ -37,3 +37,4 @@ ppocr/
 nohup.out
 screenlog.0
 data/
+test_data/

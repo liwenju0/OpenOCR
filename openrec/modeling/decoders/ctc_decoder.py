@@ -46,7 +46,12 @@ class CTCDecoder(nn.Module):
             result = predicts
 
         if not self.training:
-            predicts = F.softmax(predicts, dim=2)
+            # 在推理阶段不使用softmax
+            # 原因:
+            # 1. CTC解码通常使用log_softmax而不是softmax
+            # 2. 许多后处理步骤(如beam search)直接使用logits更有效
+            # 3. 避免不必要的计算,提高推理速度
+            # predicts = F.softmax(predicts, dim=2)
             result = predicts
 
         return result
