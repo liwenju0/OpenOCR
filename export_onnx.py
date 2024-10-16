@@ -113,7 +113,7 @@ def predict(input_image, model):
             input_names=['input'],
             output_names=['output'],
             dynamic_axes={'input': {0: 'batch_size', 3: 'width'}, 'output': {0: 'batch_size'}},
-            opset_version=15)
+            opset_version=13)
         print("Exported model.onnx")
     post_result = post_process_class(preds)
     return post_result[0][0], post_result[0][1]
@@ -173,16 +173,16 @@ def export():
     for file in files:
         label = file.split('.')[0].split('_')[-1]
         result, confidence = predict(os.path.join(base_file_path, file), model)
-        import sys
-        sys.exit()
+        return
 
 def onnx_test():
     onnx_model_path = "/home/deepctrl/liwenju/ocr-train/OpenOCR/output/svtrv2_ctc_deepctrl_real/model.onnx"
-    sample_image_path = "/home/deepctrl/liwenju/ocr-train/OpenOCR/test_data/4.jpg"  # 使用第一个图片作为示例
+    sample_image_path = "/home/deepctrl/liwenju/ocr-train/OpenOCR/test_data/2.jpg"  # 使用第一个图片作为示例
     onnx_predict(sample_image_path, onnx_model_path)
 
 if __name__ == '__main__':
     export()
+    onnx_test()
     # base_file_path = "/home/deepctrl/liwenju/ocr-train/PaddleOCR/baike_chinese_bgd_1k/cutted_img"
     # files = os.listdir(base_file_path)
     # total_count = 0
