@@ -1,3 +1,6 @@
+CUDA_VISIBLE_DEVICES=0,1, python -m torch.distributed.launch --nproc_per_node=2 tools/train_rec.py --c configs/rec/svtrv2/svtrv2_ctc_deepctrl_distill.yml
+
+
 # OpenOCR
 
 OpenOCR aims to establish a unified training and evaluation benchmark for scene text detection and recognition algorithms, at the same time, serves as the official code repository for the OCR team from the [FVL](https://fvl.fudan.edu.cn) Laboratory, Fudan University.
