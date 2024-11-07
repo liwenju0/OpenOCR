@@ -7,6 +7,7 @@ import time
 import numpy as np
 import torch
 from tqdm import tqdm
+from torch.nn import functional as F
 
 from openrec.losses.ctc_loss import EmbeddingLoss
 embedding_loss = EmbeddingLoss()
@@ -31,6 +32,31 @@ def get_parameter_number(model):
     trainable_num = sum(p.numel() for p in model.parameters()
                         if p.requires_grad)
     return {'Total': total_num, 'Trainable': trainable_num}
+
+
+class DistillationLoss:
+    def __init__(self, alpha=0.5, temperature=2.0):
+        self.alpha = alpha  # 平衡CTC loss和蒸馏loss的系数
+        self.temperature = temperature # 蒸馏温度参数
+        
+    def __call__(self, student_logits, teacher_logits, ctc_loss):
+        """
+        计算蒸馏损失
+        student_logits: 学生模型输出
+        teacher_logits: 教师模型输出 
+        ctc_loss: 原始CTC loss
+        """
+        distillation_loss = F.kl_div(
+            F.log_softmax(student_logits / self.temperature, dim=-1),
+            F.softmax(teacher_logits / self.temperature, dim=-1),
+            reduction='batchmean'
+        ) * (self.temperature ** 2)
+        
+        return {
+            'loss': ctc_loss * (1 - self.alpha) + distillation_loss * self.alpha,
+            'ctc_loss': ctc_loss,
+            'distillation_loss': distillation_loss
+        }
 
 
 class Trainer(object):
@@ -157,6 +183,47 @@ class Trainer(object):
         self.logger.info(
             f'run with torch {torch.__version__} and device {self.device}')
 
+        # 构建教师模型(原model)
+        self.teacher_model = self.model
+        self.teacher_model.eval()  # 设置为评估模式
+        
+        # 构建学生模型(ResNet45 + CTC head)
+        student_cfg = copy.deepcopy(self.cfg)
+        student_cfg['Architecture']['Encoder']['name'] = 'ResNet45'  # 使用更小的backbone
+        student_cfg['Architecture']['Encoder'].pop("use_pos_embed")
+        student_cfg['Architecture']['Encoder'].pop("dims")
+        student_cfg['Architecture']['Encoder'].pop("depths")
+        student_cfg['Architecture']['Encoder'].pop("num_heads")
+        student_cfg['Architecture']['Encoder'].pop("mixer")
+        student_cfg['Architecture']['Encoder'].pop("local_k")
+        student_cfg['Architecture']['Encoder'].pop("sub_k")
+        student_cfg['Global']['pretrained_model'] = None
+        self.student_cfg = student_cfg
+        
+        
+        self.student_model = build_model(student_cfg['Architecture'])
+        self.student_model = self.student_model.to(self.device)
+        
+        # 初始化蒸馏loss
+        self.distill_loss = DistillationLoss(
+            alpha=cfg.cfg.get('Distillation', {}).get('alpha', 0.5),
+            temperature=cfg.cfg.get('Distillation', {}).get('temperature', 2.0)
+        )
+        
+        # 更新optimizer为student模型参数
+        if self.train_dataloader is not None:
+            self.optimizer, self.lr_scheduler = build_optimizer(
+                self.cfg['Optimizer'],
+                self.cfg['LRScheduler'],
+                epochs=self.cfg['Global']['epoch_num'],
+                step_each_epoch=len(self.train_dataloader),
+                model=self.student_model,
+            )
+
+        if self.cfg['Global']['distributed']:
+            self.student_model = torch.nn.parallel.DistributedDataParallel(
+                self.student_model, [self.local_rank], find_unused_parameters=False)
+
     def load_params(self, params):
         self.model.load_state_dict(params)
 
@@ -236,7 +303,7 @@ class Trainer(object):
         ema_best_metric = self.status.get('metrics', {})
         ema_best_metric[self.eval_class.main_indicator] = 0
         train_stats = TrainingStats(log_smooth_window, ['lr'])
-        self.model.train()
+        self.student_model.train()
 
         total_samples = 0
         train_reader_cost = 0.0
@@ -264,30 +331,48 @@ class Trainer(object):
                 # use amp
                 if self.scaler:
                     with torch.cuda.amp.autocast():
-                        preds = self.model(batch[0], data=batch[1:])
-                        loss = self.loss_class(preds, batch)
-                        back_loss = loss['loss']
+                        # 获取teacher输出
+                        with torch.no_grad():
+                            teacher_preds = self.teacher_model(batch[0], data=batch[1:])
+                        
+                        # 获取student输出
+                        student_preds = self.student_model(batch[0], data=batch[1:])
+                        # 计算CTC loss
+                        ctc_loss = self.loss_class(student_preds, batch)
+                        # 计算蒸馏loss
+                        loss = self.distill_loss(
+                            student_preds, 
+                            teacher_preds.detach(),
+                            ctc_loss['loss']
+                        )
 
-                    self.scaler.scale(back_loss).backward()
+                    self.scaler.scale(loss['loss']).backward()
                     if self.grad_clip_val > 0:
                         torch.nn.utils.clip_grad_norm_(
-                            self.model.parameters(),
+                            self.student_model.parameters(),
                             max_norm=self.grad_clip_val)
                     self.scaler.step(self.optimizer)
                     self.scaler.update()
                 else:
-                    preds = self.model(batch[0], data=batch[1:])
-                    loss = self.loss_class(preds, batch)
-                    avg_loss = loss['loss']
-                    avg_loss.backward()
+                    # 获取teacher输出
+                    with torch.no_grad():
+                        teacher_preds = self.teacher_model(batch[0], data=batch[1:])
+                    student_preds = self.student_model(batch[0], data=batch[1:])
+                    ctc_loss = self.loss_class(student_preds, batch)
+                    loss = self.distill_loss(
+                        student_preds,
+                        teacher_preds.detach(), 
+                        ctc_loss['loss']
+                    )
+                    loss['loss'].backward()
                     if self.grad_clip_val > 0:
                         torch.nn.utils.clip_grad_norm_(
-                            self.model.parameters(),
+                            self.student_model.parameters(),
                             max_norm=self.grad_clip_val)
                     self.optimizer.step()
 
                 if cal_metric_during_train:  # only rec and cls need
-                    post_result = self.post_process_class(preds,
+                    post_result = self.post_process_class(student_preds,
                                                           batch,
                                                           training=True)
                     self.eval_class(post_result, batch, training=True)
@@ -312,16 +397,16 @@ class Trainer(object):
 
                             # current_weight  = copy.deepcopy(self.model.module.state_dict())
                             ema_state_dict = copy.deepcopy(
-                                self.model.module.state_dict() if self.
-                                cfg['Global']['distributed'] else self.model.
+                                self.student_model.module.state_dict() if self.
+                                cfg['Global']['distributed'] else self.student_model.
                                 state_dict())
                             self.ema_model.load_state_dict(ema_state_dict)
                         # if global_step > (epoch_num - epoch_num//10)*max_iter:
                         elif loss_currn <= loss_avg or self.all_ema:
                             # eval_batch_step = 500
                             current_weight = copy.deepcopy(
-                                self.model.module.state_dict() if self.
-                                cfg['Global']['distributed'] else self.model.
+                                self.student_model.module.state_dict() if self.
+                                cfg['Global']['distributed'] else self.student_model.
                                 state_dict())
                             k1 = 1 / (ema_stpe + 1)
                             k2 = 1 - k1
@@ -424,8 +509,8 @@ class Trainer(object):
                                 global_step,
                             )
                         if epoch > (epoch_num - epoch_num // 10 - 2):
-                            save_ckpt(self.model,
-                                      self.cfg,
+                            save_ckpt(self.student_model,
+                                      self.student_cfg,
                                       self.optimizer,
                                       self.lr_scheduler,
                                       epoch,
@@ -435,8 +520,8 @@ class Trainer(object):
                                       prefix='best_' + str(best_iter))
                             best_iter += 1
                         # else:
-                        save_ckpt(self.model,
-                                  self.cfg,
+                        save_ckpt(self.student_model,
+                                  self.student_cfg,
                                   self.optimizer,
                                   self.lr_scheduler,
                                   epoch,
@@ -470,8 +555,8 @@ class Trainer(object):
                             global_step,
                         )
                     if epoch > (epoch_num - epoch_num // 10 - 2):
-                        save_ckpt(self.model,
-                                  self.cfg,
+                        save_ckpt(self.student_model,
+                                  self.student_cfg,
                                   self.optimizer,
                                   self.lr_scheduler,
                                   epoch,
@@ -481,8 +566,8 @@ class Trainer(object):
                                   prefix='best_' + str(best_iter))
                         best_iter += 1
                     # else:
-                    save_ckpt(self.model,
-                              self.cfg,
+                    save_ckpt(self.student_model,
+                              self.student_cfg,
                               self.optimizer,
                               self.lr_scheduler,
                               epoch,
@@ -494,8 +579,8 @@ class Trainer(object):
                 self.logger.info(best_str)
 
             if self.local_rank == 0:
-                save_ckpt(self.model,
-                          self.cfg,
+                save_ckpt(self.student_model,
+                          self.student_cfg,
                           self.optimizer,
                           self.lr_scheduler,
                           epoch,
@@ -504,8 +589,8 @@ class Trainer(object):
                           is_best=False,
                           prefix=None)
                 if epoch > (epoch_num - epoch_num // 10 - 2):
-                    save_ckpt(self.model,
-                              self.cfg,
+                    save_ckpt(self.student_model,
+                              self.student_cfg,
                               self.optimizer,
                               self.lr_scheduler,
                               epoch,
@@ -548,7 +633,7 @@ class Trainer(object):
             torch.distributed.destroy_process_group()
 
     def eval(self):
-        self.model.eval()
+        self.student_model.eval()
         with torch.no_grad():
             total_frame = 0.0
             total_time = 0.0
@@ -564,9 +649,9 @@ class Trainer(object):
                 start = time.time()
                 if self.scaler:
                     with torch.cuda.amp.autocast():
-                        preds = self.model(batch[0], data=batch[1:])
+                        preds = self.student_model(batch[0], data=batch[1:])
                 else:
-                    preds = self.model(batch[0], data=batch[1:])
+                    preds = self.student_model(batch[0], data=batch[1:])
 
                 total_time += time.time() - start
                 # Obtain usable results from post-processing methods
@@ -581,7 +666,7 @@ class Trainer(object):
             metric = self.eval_class.get_metric()
 
         pbar.close()
-        self.model.train()
+        self.student_model.train()
         metric['fps'] = total_frame / total_time
         return metric
 

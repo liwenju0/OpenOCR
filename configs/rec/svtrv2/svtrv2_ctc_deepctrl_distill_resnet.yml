@@ -9,7 +9,7 @@ Global:
   eval_epoch_step: [0, 1]
   eval_batch_step: [0, 5000]
   cal_metric_during_train: True
-  pretrained_model: /home/deepctrl/liwenju/ocr-train/OpenOCR/output/svtrv2_ctc_deepctrl_real/best.pth
+  pretrained_model: /home/deepctrl/liwenju/ocr-train/OpenOCR/output/svtrv2_ctc_deepctrl_distill/best.pth
   checkpoints:
   use_tensorboard: True
   infer_img:
@@ -17,7 +17,7 @@ Global:
   character_dict_path: &character_dict_path /home/deepctrl/liwenju/ocr-train/all_vocab.txt
   max_text_length: &max_text_length 64
   use_space_char: &use_space_char True
-  save_res_path: ./output/svtrv2_ctc_deepctrl/predicts_svtrv2_ctc.txt
+  save_res_path: ./output/svtrv2_ctc_deepctrl_distill/predicts_svtrv2_ctc.txt
   use_amp: False
   distributed: True
 
@@ -37,15 +37,8 @@ Architecture:
   algorithm: SVTRv2
   Transform:
   Encoder:
-    name: SVTRv2LNConvTwo33
-    use_pos_embed: False
+    name: ResNet45
     out_channels: 256
-    dims: [128, 256, 384]
-    depths: [6, 6, 6]
-    num_heads: [4, 8, 12]
-    mixer: [['Conv','Conv','Conv','Conv','Conv','Conv'],['Conv','Conv','FGlobal','Global','Global','Global'],['Global','Global','Global','Global','Global','Global']]
-    local_k: [[5, 5], [5, 5], [-1, -1]]
-    sub_k: [[1, 1], [2, 1], [-1, -1]]
     last_stage: True
     feat2d: False
   Decoder:
